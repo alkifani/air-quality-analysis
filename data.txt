@@ -1,0 +1,39 @@
+Kolom-kolom dalam dataset:
+Tanggal dan Waktu:
+
+year, month, day, hour → waktu pengambilan data
+
+Kualitas Udara (Polutan):
+
+PM2.5 (Partikulat halus)
+
+PM10 (Partikulat kasar)
+
+SO2 (Sulfur dioksida)
+
+NO2 (Nitrogen dioksida)
+
+CO (Karbon monoksida)
+
+O3 (Ozon)
+
+Kondisi Cuaca:
+
+TEMP (Suhu udara)
+
+PRES (Tekanan udara)
+
+DEWP (Titik embun)
+
+RAIN (Curah hujan)
+
+wd (Arah angin)
+
+WSPM (Kecepatan angin)
+
+Lain-lain:
+
+station (nama stasiun)
+
+No (nomor urut data)
+

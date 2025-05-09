@@ -1,1 +1,1 @@
-https://mufadhdhal-project-air-quality.streamlit.app/
+https://mufadhdhal-air-quality-analysis.streamlit.app/

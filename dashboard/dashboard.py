@@ -16,7 +16,7 @@ def load_data(folder_path):
     return pd.concat(data_frames, ignore_index=True)
 
 # Load data
-folder = "../dataset"
+folder = "dataset"
 df = load_data(folder)
 
 # Gabungkan kolom waktu

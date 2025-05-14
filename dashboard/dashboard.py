@@ -8,7 +8,7 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
 # Load data
-file_data = 'dashboard/all_data.csv'
+file_data = 'data/all_data.csv'
 data = pd.read_csv(file_data, parse_dates=['datetime'])
 
 # Preprocessing

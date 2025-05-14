@@ -1,96 +1,139 @@
 import streamlit as st
 import pandas as pd
-import os
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-# Fungsi untuk memuat semua file CSV dalam folder
-@st.cache_data
-def load_data(folder_path):
-    csv_files = [f for f in os.listdir(folder_path) if f.endswith('.csv')]
-    data_frames = []
-    for f in csv_files:
-        df = pd.read_csv(os.path.join(folder_path, f))
-        df['station'] = f.replace('.csv', '')  # tambahkan nama stasiun
-        data_frames.append(df)
-    return pd.concat(data_frames, ignore_index=True)
+import plotly.express as px
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
 # Load data
-folder = "dashboard/data"
-df = load_data(folder)
+file_data = 'all_data.csv'
+data = pd.read_csv(file_data, parse_dates=['datetime'])
 
-# Gabungkan kolom waktu
-df["date"] = pd.to_datetime(df[['year', 'month', 'day']])
-df = df.sort_values("date")
+# Preprocessing
+data['tahun'] = data['datetime'].dt.year
+data['bulan'] = data['datetime'].dt.month
+data['musim_kode'] = data['bulan'] % 12 // 3 + 1
+kode_musim = {1: 'Winter', 2: 'Spring', 3: 'Summer', 4: 'Autumn'}
+data['musim'] = data['musim_kode'].map(kode_musim)
 
-# Sidebar filter
-st.sidebar.header("Filter Data")
-station = st.sidebar.selectbox("Pilih Stasiun", df["station"].unique())
-filtered_df = df[df["station"] == station]
+st.title('📊 Dashboard Analisis Polusi Udara')
 
-# Filter tanggal
-min_date = filtered_df["date"].min()
-max_date = filtered_df["date"].max()
-date_range = st.sidebar.date_input("Rentang Tanggal", [min_date, max_date])
-filtered_df = filtered_df[(filtered_df["date"] >= pd.to_datetime(date_range[0])) & (filtered_df["date"] <= pd.to_datetime(date_range[1]))]
+st.sidebar.header("Navigasi")
+pilihan_menu = st.sidebar.radio("Pilih Analisis", [
+    "Visualisasi Berdasarkan Tanggal",
+    "Trend PM2.5 Tahunan",
+    "Polusi Bulanan/Musiman",
+    "Korelasi Suhu & Polutan",
+    "Pengaruh Angin",
+])
 
-# Judul
-st.title("📊 Dashboard Kualitas Udara di Beijing")
-st.markdown(f"### Data dari Stasiun: `{station}`")
+# 0. Visualisasi Berdasarkan Tanggal
+if pilihan_menu == "Visualisasi Berdasarkan Tanggal":
+    st.header("📆 Visualisasi Data Berdasarkan Rentang Tanggal")
+    data['datetime'] = pd.to_datetime(data['datetime'])
 
-# Tampilkan data
-st.dataframe(filtered_df.head(10))
+    tanggal_mulai = st.sidebar.date_input("Tanggal Mulai", data['datetime'].min().date())
+    tanggal_akhir = st.sidebar.date_input("Tanggal Akhir", data['datetime'].max().date())
 
-# Visualisasi garis tren PM2.5
-st.subheader("🫧 Tren Harian PM2.5")
-fig, ax = plt.subplots()
-sns.lineplot(data=filtered_df, x="date", y="PM2.5", ax=ax)
-ax.set_title("Tren Harian PM2.5")
-ax.set_ylabel("Konsentrasi PM2.5")
-ax.set_xlabel("Tanggal")
-st.pyplot(fig)
+    if tanggal_mulai > tanggal_akhir:
+        st.error("Tanggal mulai tidak boleh lebih besar dari tanggal akhir.")
+    else:
+        filter_tanggal = (data['datetime'].dt.date >= tanggal_mulai) & (data['datetime'].dt.date <= tanggal_akhir)
+        data_terfilter = data.loc[filter_tanggal]
 
-# Korelasi antar polutan
-st.subheader("🔥 Korelasi antar Polutan")
-fig2, ax2 = plt.subplots()
-pollutants = ["PM2.5", "PM10", "SO2", "NO2", "CO", "O3"]
-sns.heatmap(filtered_df[pollutants].corr(), annot=True, cmap="coolwarm", ax=ax2)
-st.pyplot(fig2)
+        if data_terfilter.empty:
+            st.warning("Tidak ada data pada rentang tanggal yang dipilih.")
+        else:
+            st.subheader(f"Data dari {tanggal_mulai} hingga {tanggal_akhir}")
 
-# Keterangan polutan
-st.markdown("""
+            parameter = ['PM2.5 (Partikulat halus)', 'PM10 (Partikulat kasar)',
+                         'NO2 (Nitrogen dioksida)', 'SO2 (Sulfur dioksida)',
+                         'O3 (Ozon)', 'CO (Karbon monoksida)', 'TEMP (Suhu udara)']
+            pilihan_parameter = st.multiselect("Pilih parameter yang ingin divisualisasikan:", parameter, default=['PM2.5 (Partikulat halus)'])
+
+            if pilihan_parameter:
+                grafik = px.line(data_terfilter, x='datetime', y=pilihan_parameter, title="Grafik Tren Berdasarkan Tanggal")
+                st.plotly_chart(grafik)
+            else:
+                st.info("Pilih minimal satu parameter untuk divisualisasikan.")
+
+            with st.expander("🔍 Lihat data mentah"):
+                st.dataframe(data_terfilter)
+
+# 1. Trend PM2.5 Tahunan
+elif pilihan_menu == "Trend PM2.5 Tahunan":
+    st.header("📈 Apakah PM2.5 meningkat atau menurun tiap tahun?")
+    rata_pm25_tahunan = data.groupby('tahun')['PM2.5 (Partikulat halus)'].mean()
+    fig = px.line(rata_pm25_tahunan, x=rata_pm25_tahunan.index, y=rata_pm25_tahunan.values,
+                  labels={"x": "Tahun", "y": "Rata-rata PM2.5"},
+                  title="Tren Rata-rata PM2.5 per Tahun")
+    st.plotly_chart(fig)
+
+# 2. Polusi Bulanan/Musiman
+elif pilihan_menu == "Polusi Bulanan/Musiman":
+    st.header("📅 Kapan PM2.5 tertinggi dalam setahun?")
+
+    rata_bulanan = data.groupby('bulan')['PM2.5 (Partikulat halus)'].mean()
+    fig1 = px.bar(x=rata_bulanan.index, y=rata_bulanan.values,
+                  labels={"x": "Bulan", "y": "Rata-rata PM2.5"},
+                  title="Rata-rata PM2.5 per Bulan")
+    st.plotly_chart(fig1)
+
+    rata_musiman = data.groupby('musim')['PM2.5 (Partikulat halus)'].mean().reindex(['Winter', 'Spring', 'Summer', 'Autumn'])
+    fig2 = px.bar(x=rata_musiman.index, y=rata_musiman.values,
+                  labels={"x": "Musim", "y": "Rata-rata PM2.5"},
+                  title="Rata-rata PM2.5 per Musim")
+    st.plotly_chart(fig2)
+
+# 3. Korelasi Suhu dan Polutan
+elif pilihan_menu == "Korelasi Suhu & Polutan":
+    st.header("🌡️ Korelasi antara suhu dan kadar polutan utama")
+    kolom_numerik = ['TEMP (Suhu udara)', 'PM2.5 (Partikulat halus)', 'PM10 (Partikulat kasar)', 'NO2 (Nitrogen dioksida)', 'SO2 (Sulfur dioksida)', 'O3 (Ozon)', 'CO (Karbon monoksida)']
+    korelasi = data[kolom_numerik].corr()
+    fig, ax = plt.subplots()
+    sns.heatmap(korelasi, annot=True, cmap='coolwarm', ax=ax)
+    st.pyplot(fig)
+    st.markdown("""
 ### ℹ️ **Keterangan Polutan:**
 Berikut adalah penjelasan singkat tentang masing-masing polutan yang diamati:
-- **PM2.5 (Particulate Matter ≤ 2.5 µm):** Partikel sangat halus yang bisa masuk ke paru-paru dan aliran darah. Sering berasal dari pembakaran kendaraan, industri, dan asap.
-- **PM10 (Particulate Matter ≤ 10 µm):** Partikel sedikit lebih besar dari PM2.5, bisa menyebabkan iritasi hidung, tenggorokan, dan pernapasan.
-- **SO2 (Sulfur Dioksida):** Gas yang berasal dari pembakaran bahan bakar fosil (batubara dan minyak). Dapat menyebabkan iritasi saluran pernapasan dan memicu asma.
-- **NO2 (Nitrogen Dioksida):** Gas berwarna coklat kemerahan yang berasal dari kendaraan bermotor dan pembakaran industri. Berbahaya bagi paru-paru.
-- **CO (Karbon Monoksida):** Gas tidak berwarna dan tidak berbau yang sangat beracun. Dihasilkan oleh pembakaran tidak sempurna.
-- **O3 (Ozon):** Ozon di permukaan bumi dapat membahayakan sistem pernapasan. Terbentuk dari reaksi kimia antara polutan lain saat terkena sinar matahari.
+- **PM2.5:** Partikel sangat halus dari pembakaran kendaraan & industri.
+- **PM10:** Partikel lebih besar yang bisa menyebabkan iritasi saluran pernapasan.
+- **SO2:** Gas dari pembakaran bahan bakar fosil, pemicu iritasi pernapasan.
+- **NO2:** Gas beracun dari kendaraan & industri.
+- **CO:** Gas tak berwarna/berbau dari pembakaran tidak sempurna.
+- **O3:** Ozon permukaan bumi dari reaksi polutan & sinar matahari.
 """)
 
-# Histogram polutan
-st.subheader("📊 Histogram Distribusi Polutan")
-pollutant_select = st.selectbox("Pilih Polutan", pollutants)
-fig3, ax3 = plt.subplots()
-sns.histplot(filtered_df[pollutant_select], kde=True, bins=30, ax=ax3)
-ax3.set_title(f"Distribusi {pollutant_select}")
-st.pyplot(fig3)
+# 4. Pengaruh Angin
+elif pilihan_menu == "Pengaruh Angin":
+    st.header("🌬️ Pengaruh arah dan kecepatan angin terhadap polusi")
+    fig1 = px.scatter(data, x='WSPM (Kecepatan angin)', y='PM2.5 (Partikulat halus)', color='wd (Arah angin)',
+                      title="Wind Speed vs PM2.5 (warna: arah angin)",
+                      labels={"WSPM (Kecepatan angin)": "Kecepatan Angin", "PM2.5 (Partikulat halus)": "PM2.5"})
+    st.plotly_chart(fig1)
 
-# Boxplot per polutan
-st.subheader("📦 Boxplot Polutan")
-fig4, ax4 = plt.subplots()
-sns.boxplot(data=filtered_df[pollutants], ax=ax4)
-ax4.set_title("Boxplot Polutan (Deteksi Outlier)")
-st.pyplot(fig4)
+    st.subheader("📦 Distribusi PM2.5 Berdasarkan Arah Angin")
+    fig2, ax = plt.subplots(figsize=(10, 6))
+    sns.boxplot(x="wd (Arah angin)", y="PM2.5 (Partikulat halus)", data=data, ax=ax)
+    ax.set_title("Distribusi PM2.5 Berdasarkan Arah Angin")
+    ax.set_xlabel("Arah Angin")
+    ax.set_ylabel("Konsentrasi PM2.5 (µg/m³)")
+    ax.grid(True)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    st.pyplot(fig2)
+    st.markdown("""
+    Kesimpulan:
+1. Pengaruh Kecepatan Angin terhadap PM2.5:
+    - Polusi menurun saat kecepatan angin meningkat.
+    Terlihat pola negatif (menurun): semakin tinggi kecepatan angin, semakin rendah konsentrasi PM2.5.
 
-# Rata-rata bulanan
-st.subheader("📅 Rata-rata Bulanan PM2.5")
-monthly_avg = filtered_df.groupby(filtered_df["date"].dt.month)["PM2.5"].mean()
-fig5, ax5 = plt.subplots()
-monthly_avg.plot(kind='bar', ax=ax5)
-ax5.set_title("Rata-rata PM2.5 per Bulan")
-ax5.set_xlabel("Bulan")
-ax5.set_ylabel("PM2.5")
-st.pyplot(fig5)
+    - Korelasi negatif ini masuk akal karena angin dapat menyebarkan polutan di atmosfer, sehingga mengurangi konsentrasinya di satu titik pengukuran.
 
+2. Pengaruh Arah Angin terhadap PM2.5:
+    - Dari boxplot terlihat bahwa arah angin dari timur dan timur laut (E, ENE, NE) cenderung menunjukkan konsentrasi PM2.5 lebih tinggi dibandingkan arah lain.
+
+    - Arah angin tertentu mungkin membawa polutan dari wilayah yang lebih tercemar (misalnya kawasan industri, lalu lintas padat, atau daerah padat penduduk).
+""")

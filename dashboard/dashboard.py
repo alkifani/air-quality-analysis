@@ -6,9 +6,13 @@ import plotly.express as px
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+import os
 
-# Load data
-file_data = 'data/all_data.csv'
+# # Load data
+# file_data = 'data/all_data.csv'
+# data = pd.read_csv(file_data, parse_dates=['datetime'])
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+file_data = os.path.join(BASE_DIR, 'data', 'all_data.csv')
 data = pd.read_csv(file_data, parse_dates=['datetime'])
 
 # Preprocessing
